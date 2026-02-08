@@ -44,6 +44,7 @@ import {
   pickFallbackThinkingLevel,
   type FailoverReason,
 } from "../pi-embedded-helpers.js";
+import { CostGovernor, resolveTokenBudget } from "../cost-governor.js";
 import { normalizeUsage, type UsageLike } from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
 import { compactEmbeddedPiSessionDirect } from "./compact.js";
@@ -319,10 +320,45 @@ export async function runEmbeddedPiAgent(
         }
       }
 
+      const costGovernor = new CostGovernor(resolveTokenBudget(params.config));
+
       const MAX_OVERFLOW_COMPACTION_ATTEMPTS = 3;
       let overflowCompactionAttempts = 0;
       try {
         while (true) {
+          // Check token budget before each attempt.
+          if (costGovernor.isEnforcing) {
+            const budgetCheck = costGovernor.checkBudget();
+            if (!budgetCheck.allowed) {
+              log.warn(
+                `[cost-governor] budget exhausted: ${costGovernor.totals.total} / ${costGovernor.tokenBudget} tokens`,
+              );
+              return {
+                payloads: [
+                  {
+                    text: budgetCheck.suggestion ?? "Token budget exhausted for this session.",
+                    isError: true,
+                  },
+                ],
+                meta: {
+                  durationMs: Date.now() - started,
+                  agentMeta: {
+                    sessionId: params.sessionId,
+                    provider,
+                    model: model.id,
+                  },
+                  error: {
+                    kind: "context_overflow" as const,
+                    message: "Token budget exhausted.",
+                  },
+                },
+              };
+            }
+            if (budgetCheck.suggestion) {
+              log.info(`[cost-governor] ${budgetCheck.suggestion}`);
+            }
+          }
+
           attemptedThinking.add(thinkLevel);
           await fs.mkdir(resolvedWorkspace, { recursive: true });
 
@@ -657,6 +693,10 @@ export async function runEmbeddedPiAgent(
           }
 
           const usage = normalizeUsage(lastAssistant?.usage as UsageLike);
+
+          // Track cumulative usage for cost governor budget enforcement.
+          costGovernor.recordUsage(usage);
+
           const agentMeta: EmbeddedPiAgentMeta = {
             sessionId: sessionIdUsed,
             provider: lastAssistant?.provider ?? provider,
