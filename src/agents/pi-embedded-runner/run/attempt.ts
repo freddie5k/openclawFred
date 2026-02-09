@@ -69,6 +69,7 @@ import {
   sanitizeToolsForGoogle,
 } from "../google.js";
 import { getDmHistoryLimitFromSessionKey, limitHistoryTurns } from "../history.js";
+import { resolveMaxHistoryTurns } from "../../history-limits.js";
 import { log } from "../logger.js";
 import { buildModelAliasLines } from "../model.js";
 import {
@@ -554,10 +555,13 @@ export async function runEmbeddedAttempt(
         const validated = transcriptPolicy.validateAnthropicTurns
           ? validateAnthropicTurns(validatedGemini)
           : validatedGemini;
-        const limited = limitHistoryTurns(
-          validated,
-          getDmHistoryLimitFromSessionKey(params.sessionKey, params.config),
-        );
+        // Apply the stricter of per-channel DM limit and global maxHistoryTurns.
+        const dmLimit = getDmHistoryLimitFromSessionKey(params.sessionKey, params.config);
+        const globalLimit = resolveMaxHistoryTurns(params.config);
+        const effectiveLimit =
+          dmLimit && globalLimit ? Math.min(dmLimit, globalLimit)
+          : dmLimit ?? globalLimit;
+        const limited = limitHistoryTurns(validated, effectiveLimit);
         cacheTrace?.recordStage("session:limited", { messages: limited });
         if (limited.length > 0) {
           activeSession.agent.replaceMessages(limited);
