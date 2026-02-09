@@ -128,6 +128,8 @@ export type AgentDefaultsConfig = {
   contextTokens?: number;
   /** Per-session token budget (0 = unlimited). Tracks cumulative input+output+thinking tokens. */
   tokenBudget?: number;
+  /** Max conversation turns kept in history (0 = unlimited, default: 30). */
+  maxHistoryTurns?: number;
   /** Optional CLI backends for text-only fallback (claude-cli, etc.). */
   cliBackends?: Record<string, CliBackendConfig>;
   /** Opt-in: prune old tool results from the LLM context to reduce token usage. */

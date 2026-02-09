@@ -54,6 +54,7 @@ export const AgentDefaultsSchema = z
     envelopeElapsed: z.union([z.literal("on"), z.literal("off")]).optional(),
     contextTokens: z.number().int().positive().optional(),
     tokenBudget: z.number().int().nonnegative().optional(),
+    maxHistoryTurns: z.number().int().nonnegative().optional(),
     cliBackends: z.record(z.string(), CliBackendSchema).optional(),
     memorySearch: MemorySearchSchema,
     contextPruning: z
